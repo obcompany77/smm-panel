@@ -1,7 +1,6 @@
-i// /pages/api/auth/login.ts
 import type { NextApiRequest, NextApiResponse } from "next";
 import bcrypt from "bcryptjs";
-import { supabaseServer } from "@/lib/supabaseClient";
+import { supabaseServer } from "../../../lib/supabaseClient";
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== "POST") return res.status(405).json({ msg: "Method Not Allowed" });
