@@ -1,62 +1,32 @@
-import { useEffect, useState } from "react";
-import { useRouter } from "next/router";
+// pages/api/orders.ts
+import type { NextApiRequest, NextApiResponse } from "next";
+import { createClient } from "@supabase/supabase-js";
 
-type Order = {
-  id: number;
-  service_id: number;
-  cost: number;
-  status: string;
-  created_at: string;
-};
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!
+);
 
-export default function OrdersPage() {
-  const [orders, setOrders] = useState<Order[]>([]);
-  const [msg, setMsg] = useState<string | null>(null);
-  const router = useRouter();
+function parseUserIdFromToken(token?: string | null) {
+  if (!token) return null;
+  const parts = token.split(".");
+  if (parts.length !== 2 || parts[0] !== "ok") return null;
+  return parts[1];
+}
 
-  useEffect(() => {
-    const token = localStorage.getItem("token");
-    if (!token) {
-      setMsg("로그인이 필요합니다.");
-      router.push("/auth");
-      return;
-    }
+export default async function handler(req: NextApiRequest, res: NextApiResponse) {
+  if (req.method !== "GET") return res.status(405).json({ msg: "Method Not Allowed" });
 
-    // 주문 내역 가져오기
-    fetch("/api/orders", {
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
-    })
-      .then((res) => res.json())
-      .then((data) => {
-        if (Array.isArray(data)) {
-          setOrders(data);
-        } else {
-          setMsg("주문 내역을 불러오는 데 실패했습니다.");
-        }
-      })
-      .catch(() => {
-        setMsg("서버 오류로 주문 내역을 불러올 수 없습니다.");
-      });
-  }, [router]);
+  const token = req.headers.authorization?.replace("Bearer ", "") ?? "";
+  const user_id = parseUserIdFromToken(token);
+  if (!user_id) return res.status(401).json({ msg: "인증 실패" });
 
-  return (
-    <div>
-      <h1>주문 내역</h1>
-      {msg && <p>{msg}</p>}
-      {orders.length > 0 ? (
-        <ul>
-          {orders.map((order) => (
-            <li key={order.id}>
-              서비스 ID: {order.service_id} | 비용: {order.cost} | 상태: {order.status} | 주문일:{" "}
-              {new Date(order.created_at).toLocaleString()}
-            </li>
-          ))}
-        </ul>
-      ) : (
-        !msg && <p>주문 내역이 없습니다.</p>
-      )}
-    </div>
-  );
+  const { data, error } = await supabase
+    .from("orders")
+    .select("id, service_id, cost, status, created_at")
+    .eq("user_id", user_id)
+    .order("created_at", { ascending: false });
+
+  if (error) return res.status(500).json({ msg: "주문 내역 조회 실패", detail: error.message });
+  return res.status(200).json({ items: data || [] });
 }
