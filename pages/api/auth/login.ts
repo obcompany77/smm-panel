@@ -1,48 +1,56 @@
 // pages/api/auth/login.ts
-import type { NextApiRequest, NextApiResponse } from "next";
-import bcrypt from "bcryptjs";
-import { createClient } from "@supabase/supabase-js";
+import type { NextApiRequest, NextApiResponse } from 'next';
+import bcrypt from 'bcryptjs';
+import { supabaseAdmin } from '../../lib/serverSupabase'; // <-- api/auth 기준으로 두 단계 올라간 경로 (pages/api/auth -> ../../lib)
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
+type ApiRes =
+  | { ok: true; token: string; user: { id: string; email: string; role?: string } }
+  | { ok: false; msg: string; detail?: string };
 
-export default async function handler(req: NextApiRequest, res: NextApiResponse) {
-  // GET 등으로 오면 405
-  if (req.method !== "POST") {
-    res.setHeader("Allow", "POST");
-    return res.status(405).json({ msg: "Method Not Allowed" });
+export default async function handler(req: NextApiRequest, res: NextApiResponse<ApiRes>) {
+  if (req.method !== 'POST') {
+    return res.status(405).json({ ok: false, msg: 'Method Not Allowed' });
   }
 
   try {
-    const { email, password } = req.body || {};
+    const { email, password } = (req.body ?? {}) as { email?: string; password?: string };
+
     if (!email || !password) {
-      return res.status(400).json({ msg: "이메일/비밀번호가 필요합니다" });
+      return res.status(400).json({ ok: false, msg: '이메일/비밀번호를 입력해주세요.' });
     }
 
-    // provider=local 계정만 조회
-    const { data: user, error } = await supabase
-      .from("users")
-      .select("id, email, password, provider")
-      .eq("email", email)
-      .eq("provider", "local")
-      .single();
+    // users 테이블에서 사용자 조회
+    const { data: rows, error } = await supabaseAdmin
+      .from('users')
+      .select('id, email, password, provider, role')
+      .eq('email', email)
+      .limit(1);
 
-    if (error || !user) {
-      return res.status(401).json({ msg: "이메일 또는 비밀번호가 올바르지 않습니다" });
+    if (error) {
+      return res.status(500).json({ ok: false, msg: 'DB 오류', detail: error.message });
+    }
+    const user = rows?.[0];
+    if (!user) {
+      return res.status(401).json({ ok: false, msg: '가입된 이메일이 없습니다.' });
+    }
+    if (user.provider && user.provider !== 'local') {
+      return res.status(400).json({ ok: false, msg: '소셜 계정으로 가입된 이메일입니다.' });
     }
 
-    const ok = await bcrypt.compare(password, user.password as string);
-    if (!ok) {
-      return res.status(401).json({ msg: "이메일 또는 비밀번호가 올바르지 않습니다" });
+    const isMatch = await bcrypt.compare(password, user.password || '');
+    if (!isMatch) {
+      return res.status(401).json({ ok: false, msg: '비밀번호가 올바르지 않습니다.' });
     }
 
-    // 앱에서 localStorage로 쓰는 간단 토큰
-    const token = Math.random().toString(36).slice(2);
+    // 최소 토큰 (MVP: user.id 그대로 저장 — 추후 JWT로 교체 가능)
+    const token = user.id;
 
-    return res.status(200).json({ token, userId: user.id });
+    return res.status(200).json({
+      ok: true,
+      token,
+      user: { id: user.id, email: user.email, role: user.role },
+    });
   } catch (e: any) {
-    return res.status(500).json({ msg: "서버 오류", detail: e.message });
+    return res.status(500).json({ ok: false, msg: '서버 오류', detail: e?.message });
   }
 }
