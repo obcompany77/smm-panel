@@ -9,6 +9,7 @@ const supabase = createClient(
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method === "GET") {
+    // 주문 내역 조회
     const { data, error } = await supabase
       .from("orders")
       .select("*")
@@ -16,7 +17,20 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     if (error) return res.status(500).json({ error: error.message });
     return res.status(200).json(data);
-  } else {
-    return res.status(405).json({ error: "Method not allowed" });
   }
+
+  if (req.method === "POST") {
+    // 주문 생성
+    const { user_id, service_id, cost } = req.body;
+
+    const { data, error } = await supabase
+      .from("orders")
+      .insert([{ user_id, service_id, cost }])
+      .select();
+
+    if (error) return res.status(500).json({ error: error.message });
+    return res.status(201).json(data);
+  }
+
+  return res.status(405).json({ error: "Method not allowed" });
 }
