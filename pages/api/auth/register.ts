@@ -1,7 +1,6 @@
-// /pages/api/auth/register.ts
 import { NextApiRequest, NextApiResponse } from "next";
 import bcrypt from "bcryptjs";
-import { supabase } from "@/lib/supabaseClient";
+import { supabaseServer } from "@/lib/supabaseClient";
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== "POST") {
@@ -18,8 +17,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     // 비밀번호 해시
     const hashedPassword = await bcrypt.hash(password, 10);
 
-    // Supabase users 테이블에 저장
-    const { error } = await supabase.from("users").insert([
+    // users 테이블에 저장
+    const { error } = await supabaseServer.from("users").insert([
       { email, password: hashedPassword }
     ]);
 
