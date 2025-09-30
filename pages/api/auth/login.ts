@@ -3,43 +3,28 @@ import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import { createClient } from "@supabase/supabase-js";
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
+const url = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+const key = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+const supabase = createClient(url, key);
+const JWT_SECRET = process.env.JWT_SECRET!;
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
-  if (req.method !== "POST") {
-    return res.status(405).json({ message: "Method not allowed" });
-  }
+  if (req.method !== "POST") return res.status(405).json({ msg: "Method Not Allowed" });
 
-  const { email, password } = req.body;
+  const { email, password } = req.body || {};
+  if (!email || !password) return res.status(400).json({ msg: "email, password 필수" });
 
-  // 유저 조회
-  const { data: users, error } = await supabase
+  const { data: user, error } = await supabase
     .from("users")
-    .select("*")
+    .select("id, password, name")
     .eq("email", email)
-    .limit(1);
+    .single();
 
-  if (error || !users || users.length === 0) {
-    return res.status(400).json({ message: "User not found" });
-  }
+  if (error || !user) return res.status(401).json({ msg: "이메일 또는 비밀번호가 올바르지 않습니다." });
 
-  const user = users[0];
+  const ok = await bcrypt.compare(password, user.password);
+  if (!ok) return res.status(401).json({ msg: "이메일 또는 비밀번호가 올바르지 않습니다." });
 
-  // 비밀번호 검증
-  const isMatch = await bcrypt.compare(password, user.password);
-  if (!isMatch) {
-    return res.status(400).json({ message: "Invalid credentials" });
-  }
-
-  // JWT 발급
-  const token = jwt.sign(
-    { id: user.id, email: user.email },
-    process.env.JWT_SECRET || "secret-key",
-    { expiresIn: "7d" }
-  );
-
-  return res.status(200).json({ message: "Login successful", token });
+  const token = jwt.sign({ uid: user.id, email }, JWT_SECRET, { expiresIn: "7d" });
+  return res.status(200).json({ msg: "로그인 성공", token, name: user.name });
 }
