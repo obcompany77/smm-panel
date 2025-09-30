@@ -1,61 +1,86 @@
-// pages/auth.tsx
-import { useState } from "react";
+// pages/auth.tsx  (로그인 페이지 파일에 그대로 붙여넣기)
+// 파일 이름이 login.tsx 라면 파일 최상단 주석만 바꾸고 내용은 동일하게 쓰면 됩니다.
+
+import { useState, FormEvent } from 'react';
+import { useRouter } from 'next/router';
 
 export default function AuthPage() {
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [msg, setMsg] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
+  const router = useRouter();
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [msg, setMsg] = useState<string>('');
 
-  // ★ 핵심: 반드시 e.preventDefault() 해서 GET 이동을 막고 fetch(POST)로 보낸다
-  const onSubmit = async (e: React.FormEvent) => {
+  async function handleLogin(e: FormEvent) {
     e.preventDefault();
-    setMsg(null);
-    setLoading(true);
+    setMsg('');
+
+    const res = await fetch('/api/auth/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password }),
+    });
+
+    // 실패/빈 바디 대비: 안전하게 파싱
+    let data: any = {};
     try {
-      const r = await fetch("/api/auth/login", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password }),
-      });
-      const data = await r.json();
-      if (!r.ok) throw new Error(data?.msg || "로그인 실패");
-      localStorage.setItem("token", data.token);
-      localStorage.setItem("user_id", data.userId);
-      // 로그인 후 이동할 페이지
-      window.location.href = "/services";
-    } catch (err: any) {
-      setMsg(err.message);
-    } finally {
-      setLoading(false);
+      data = await res.json();
+    } catch {
+      data = {};
     }
-  };
+
+    if (!res.ok || !data?.ok) {
+      setMsg(data?.msg || `로그인 실패 (${res.status})`);
+      return;
+    }
+
+    // 최소 토큰 저장 (MVP)
+    localStorage.setItem('token', data.token);
+    // 필요하면 사용자 정보도: localStorage.setItem('me', JSON.stringify(data.user));
+
+    router.push('/'); // 홈으로 이동
+  }
 
   return (
-    <div style={{ maxWidth: 420, margin: "72px auto", color: "#e2e8f0" }}>
-      <h1 style={{ marginBottom: 16 }}>로그인</h1>
-      <form onSubmit={onSubmit}>
+    <div style={{ maxWidth: 420, margin: '60px auto', fontFamily: 'system-ui, sans-serif' }}>
+      <h1 style={{ fontSize: 24, fontWeight: 700, marginBottom: 16 }}>로그인</h1>
+
+      <form onSubmit={handleLogin} style={{ display: 'grid', gap: 12 }}>
         <input
           type="email"
           placeholder="이메일"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
+          style={{ padding: 10, border: '1px solid #ccc', borderRadius: 8 }}
           required
-          style={{ display: "block", width: "100%", marginBottom: 10, padding: 10 }}
         />
         <input
           type="password"
           placeholder="비밀번호"
           value={password}
           onChange={(e) => setPassword(e.target.value)}
+          style={{ padding: 10, border: '1px solid #ccc', borderRadius: 8 }}
           required
-          style={{ display: "block", width: "100%", marginBottom: 12, padding: 10 }}
         />
-        <button type="submit" disabled={loading} style={{ padding: "10px 16px" }}>
-          {loading ? "로그인 중..." : "로그인"}
+        <button
+          type="submit"
+          style={{
+            padding: 12,
+            borderRadius: 10,
+            border: 0,
+            background: '#2563eb',
+            color: '#fff',
+            fontWeight: 600,
+          }}
+        >
+          로그인
         </button>
       </form>
-      {msg && <p style={{ color: "#f87171", marginTop: 12 }}>{msg}</p>}
+
+      {msg && (
+        <p style={{ color: '#e11d48', marginTop: 12 }}>
+          {msg}
+        </p>
+      )}
     </div>
   );
 }
