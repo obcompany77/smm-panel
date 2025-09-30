@@ -1,72 +1,77 @@
-// pages/api/orders.ts
-import type { NextApiRequest, NextApiResponse } from "next";
-import { createClient } from "@supabase/supabase-js";
+// pages/orders.tsx
+import { useEffect, useState } from "react";
+import { useRouter } from "next/router";
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
+type Order = { id: number; service_id: number; cost: number; status: string; created_at: string };
 
-function parseUserIdFromToken(token?: string | null) {
-  if (!token) return null;
-  const parts = token.split(".");
-  if (parts.length !== 2 || parts[0] !== "ok") return null;
-  return parts[1];
+export default function OrdersPage() {
+  const [orders, setOrders] = useState<Order[]>([]);
+  const [msg, setMsg] = useState<string | null>(null);
+  const router = useRouter();
+
+  useEffect(() => {
+    const token = localStorage.getItem("token");
+    if (!token) {
+      setMsg("로그인이 필요합니다.");
+      router.push("/auth");
+      return;
+    }
+
+    fetch("/api/orders", { headers: { Authorization: "Bearer " + token } })
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.items) setOrders(data.items);
+        else setMsg("주문 내역 불러오기 실패");
+      })
+      .catch(() => setMsg("서버 오류"));
+  }, [router]);
+
+  return (
+    <main style={wrap}>
+      <div style={card}>
+        <h1>내 주문 내역</h1>
+        {msg && <p style={{ color: "#f87171" }}>{msg}</p>}
+        {orders.length > 0 ? (
+          <div style={{ marginTop: 16 }}>
+            {orders.map((o) => (
+              <div key={o.id} style={row}>
+                <div>#{o.id}</div>
+                <div>서비스 ID: {o.service_id}</div>
+                <div>${o.cost}</div>
+                <div>{o.status}</div>
+                <div>{new Date(o.created_at).toLocaleString()}</div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          !msg && <p>주문 내역이 없습니다.</p>
+        )}
+      </div>
+    </main>
+  );
 }
 
-export default async function handler(req: NextApiRequest, res: NextApiResponse) {
-  // 주문 내역 조회 (GET)
-  if (req.method === "GET") {
-    const token = req.headers.authorization?.replace("Bearer ", "") ?? "";
-    const user_id = parseUserIdFromToken(token);
-    if (!user_id) return res.status(401).json({ msg: "인증 실패" });
-
-    const { data, error } = await supabase
-      .from("orders")
-      .select("id, service_id, cost, status, created_at")
-      .eq("user_id", user_id)
-      .order("created_at", { ascending: false });
-
-    if (error) return res.status(500).json({ msg: "주문 내역 조회 실패", detail: error.message });
-    return res.status(200).json({ items: data || [] });
-  }
-
-  // 주문 생성 (POST)
-  if (req.method === "POST") {
-    const { service_id } = req.body;
-    const token = (req.headers.authorization?.replace("Bearer ", "") || req.body?.token) ?? "";
-    const user_id = parseUserIdFromToken(token);
-
-    if (!user_id) return res.status(401).json({ msg: "인증 실패" });
-    if (!service_id) return res.status(400).json({ msg: "service_id 필요" });
-
-    // 서비스 가격 확인
-    const { data: svc, error: serr } = await supabase
-      .from("services").select("id, price").eq("id", service_id).maybeSingle();
-    if (serr || !svc) return res.status(404).json({ msg: "서비스 없음" });
-    const cost = Number(svc.price);
-
-    // 지갑 확인
-    const { data: wallet, error: werr } = await supabase
-      .from("wallets").select("id, balance").eq("user_id", user_id).maybeSingle();
-    if (werr || !wallet) return res.status(400).json({ msg: "지갑 없음" });
-
-    if (wallet.balance < cost) return res.status(400).json({ msg: "잔액 부족" });
-
-    // 잔액 차감
-    await supabase.from("wallets").update({ balance: wallet.balance - cost }).eq("id", wallet.id);
-
-    // 주문 생성
-    const { data: order, error: oerr } = await supabase
-      .from("orders")
-      .insert([{ user_id, service_id, cost, status: "pending" }])
-      .select()
-      .single();
-    if (oerr) return res.status(500).json({ msg: "주문 실패", detail: oerr.message });
-
-    return res.status(200).json({ msg: "주문 성공", order });
-  }
-
-  // 그 외 메소드 차단
-  return res.status(405).json({ msg: "Method Not Allowed" });
-}
+const wrap: React.CSSProperties = {
+  minHeight: "100vh",
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  background: "#0b1220",
+  color: "#e5e7eb",
+  padding: 16,
+};
+const card: React.CSSProperties = {
+  width: "100%",
+  maxWidth: 720,
+  background: "#111827",
+  border: "1px solid #1f2937",
+  borderRadius: 12,
+  padding: 20,
+};
+const row: React.CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "80px 1fr 80px 100px 200px",
+  gap: 12,
+  padding: "8px 0",
+  borderBottom: "1px solid #1f2937",
+};
